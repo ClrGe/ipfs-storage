@@ -34,9 +34,16 @@ async function startServer() {
         } catch (error) {
             console.error(`Error uploading file to IPFS: ${error}`);
             res.status(500).send(`Error uploading file to IPFS: ${error}`);
-            return res.status(500).send(`Error uploading file to IPFS: ${error}`);
         }
 
+    });
+
+    // endpoint to retrieve content of collection 'files' from mongodb
+    app.get('/files', async (req: any, res: any) => {
+        const db = await connectToMongoDB();
+        const collection = db.collection('files');
+        const files = await collection.find().toArray();
+        res.send(files);
     });
 
     app.post('/test', cors(corsOptions), async (req: any, res: any) => {
@@ -56,9 +63,18 @@ async function startServer() {
     });
 }
 
+// connect to mongodb using native driver
+async function connectToMongoDB(){
+    const { MongoClient } = require('mongodb');
+    const uri = 'mongodb://localhost:27017';
+    const client = new MongoClient(uri);
+    await client.connect();
+    const db = client.db('depot');
+    return db;
+}
 async function loadToIpfs(file: any) {
     const fs = require('fs');
-    const { create } = await import('ipfs-core');
+    const {create} = await import('ipfs-core');
 
     if (!fs.statSync(file.path).isFile()) {
         console.error(`Error uploading file to IPFS: '${file.path}' is not a file`);
@@ -71,6 +87,18 @@ async function loadToIpfs(file: any) {
     const buffer = fs.readFileSync(file.path);
     const result = await ipfs.add(buffer);
     console.log(`'${file.originalname}' uploaded to IPFS: ${gateway}${result.path}`);
+    connectToMongoDB().then((db: any) => {
+        const collection = db.collection('files');
+        collection.insertOne({
+            name: file.originalname,
+            hash: result.path,
+            address: gateway + result.path
+        });
+    });
 }
+
+
+
+
 
 startServer();
