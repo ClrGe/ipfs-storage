@@ -60,7 +60,7 @@ async function startServer() {
     await client.connect();
 
     // endpoint to register a new user
-    app.post('/register', async (req: any, res: any) => {
+    app.post('/api/register', async (req: any, res: any) => {
         let collection = db.collection('users');
         console.log(req.body)
         let result = await collection.insertOne(
@@ -83,7 +83,7 @@ async function startServer() {
     });
 
     // endpoint to log a user in
-    app.post('/login' , async (req: any, res: any) => {
+    app.post('/api/login' , async (req: any, res: any) => {
         let collection = db.collection('users');
         console.log(req.body)
         log = `Login attempt from ${req.body} `;
@@ -96,7 +96,7 @@ async function startServer() {
     });
 
     // endpoint to upload a file and save it on the file system
-    app.post('/fs', upload.single('filepond'), async (req: any, res: any) => {
+    app.post('/api/fs', upload.single('filepond'), async (req: any, res: any) => {
         if (!req.file) {
             log = 'Failed - No file uploaded.';
             res.status(400).send('No file uploaded.');
@@ -118,7 +118,7 @@ async function startServer() {
     });
 
     // endpoint to upload a file and send it to ipfs
-    app.post('/upload', upload.single('filepond'), async (req: any, res: any) => {
+    app.post('/api/upload', upload.single('filepond'), async (req: any, res: any) => {
         if (!req.file) {
             log = 'Failed - No file uploaded.';
             res.status(400).send('No file uploaded.');
@@ -137,7 +137,7 @@ async function startServer() {
     });
 
     // endpoint to send the list of transactions
-    app.get('/transactions', async (req: any, res: any) => {
+    app.get('/api/transactions', async (req: any, res: any) => {
         let collection = db.collection('transactions');
 
         try {
