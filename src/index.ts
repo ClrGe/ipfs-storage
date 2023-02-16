@@ -1,18 +1,25 @@
-const express = require('express');
-const multer = require('multer');
-const cors = require('cors');
-const fs = require('fs');
+// CLG - 2023-02-16 11:00:00 - JMG-Conseil
+// Back-end pour la plateforme de dépôt de ressources numériques vers divers supports (IPFS, fs, etc.)
+// Version 0.1
 
-// Create a new express application instance
+const   express = require('express'),
+        multer = require('multer'),
+        PORT = process.env.PORT,
+        MONGO_URI = process.env.MONGO_URI,
+        cors = require('cors'),
+        fs = require('fs'),
+        { MongoClient } = require('mongodb'),
+        client = new MongoClient(MONGO_URI),
+        upload = multer({ dest: 'lib/files/' }),
+        app = express();
 
-const app = express();
-const upload = multer({ dest: 'lib/files' });
+let collection;
 
-let PORT = 3000;
 
-const corsOptions = {
-    origin: 'http://localhost:5173'
-}
+// -----------------
+// --- Middleware ---
+// -----------------
+
 
 app.use(cors(
     {
@@ -20,8 +27,39 @@ app.use(cors(
         methods: ['GET', 'POST', 'PUT', 'DELETE'],
     }
 ));
+
+
+// -----------------
+// --- Endpoints ---
+// -----------------
+
+
 // Start the express js server
 async function startServer() {
+    const db = await connectToMongoDB();
+
+    // endpoint to register a new user
+    app.post('/register', async (req: any, res: any) => {
+        collection = db.collection('users');
+        const user = req.body;
+        let result = await collection.insertOne(
+            {_id : 'todto', user:  {user}})
+
+        if (result) {
+            res.send('ok');
+        } else {
+            res.send('error');
+        }
+    });
+
+    // endpoint to login a user
+    app.post('/login' , async (req: any, res: any) => {
+        collection = db.collection('users');
+        console.log(req.body);
+        res.send('ok');
+    });
+
+    // endpoint to upload a file
     app.post('/upload', upload.single('filepond'), async (req: any, res: any) => {
         if (!req.file) {
             res.status(400).send('No file uploaded.');
@@ -38,40 +76,40 @@ async function startServer() {
 
     });
 
-    // endpoint to retrieve content of collection 'files' from mongodb
+    // endpoint to send the list of transactions
     app.get('/files', async (req: any, res: any) => {
-        const db = await connectToMongoDB();
-        const collection = db.collection('files');
+        collection = db.collection('files');
         const files = await collection.find().toArray();
         res.send(files);
     });
 
-    app.post('/test', cors(corsOptions), async (req: any, res: any) => {
-        if (!req.files || Object.keys(req.files).length === 0) {
-            console.log('No files were uploaded.' + req.files);
-            return res.status(400).send('No files were uploaded.');
-        }
-
-        const url = await loadToIpfs(req.files.file);
-        console.log(`File uploaded to IPFS: ${url}`);
-        res.send(`File uploaded to IPFS: ${url}`);
-    });
-
-
+    // start server
     app.listen(PORT, () => {
         console.log('Server listening on port '+ PORT +'.');
     });
 }
 
+
+// -----------------
+// --- Functions ---
+// -----------------
+
+
 // connect to mongodb using native driver
 async function connectToMongoDB(){
-    const { MongoClient } = require('mongodb');
-    const uri = 'mongodb://localhost:27017';
-    const client = new MongoClient(uri);
     await client.connect();
     const db = client.db('depot');
     return db;
 }
+
+async function hashPassword(password: string){
+    const bcrypt = require('bcrypt');
+    const saltRounds = 10;
+    const salt = bcrypt.genSaltSync(saltRounds);
+    const hash = bcrypt.hashSync(password, salt);
+    return hash;
+}
+
 async function loadToIpfs(file: any) {
     const fs = require('fs');
     const {create} = await import('ipfs-core');
@@ -97,8 +135,8 @@ async function loadToIpfs(file: any) {
     });
 }
 
-
-
-
+// -----------------
+// --- Start app ---
+// -----------------
 
 startServer();
