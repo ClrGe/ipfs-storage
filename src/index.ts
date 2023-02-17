@@ -32,6 +32,7 @@ const   PORT            = process.env.PORT,
 
 
 const   app     = express(),
+        saltRounds = 10,
         client  = new MongoClient(MONGO_URI),
         db      = client.db(MONGO_BASE),
         upload  = multer({ dest: 'lib/files/' });
@@ -70,76 +71,77 @@ async function startServer() {
     app.post('/api/register', async (req: any, res: any) => {
         let collection = db.collection('users');
         console.log(req.body)
-        let result = await collection.insertOne(
-            {
-                email: req.body.email,
-                password: req.body.password,
-                date: new Date(),
-             },
-        );
+        const password = req.body.password;
+        bcrypt
+            .genSalt(saltRounds)
+            .then((salt: any) => {
+                console.log('Salt: ', salt)
+                return bcrypt.hash(password, salt, (err: any, hash: any) => {
+                        console.log('Hash: ', hash)
+                        let result = collection.insertOne(
+                            {
+                                email: req.body.email,
+                                password: hash,
+                                date: new Date(),
+                            },
+                        );
+                        if (result) {
+                            log = `New user registered: `;
+                            saveTraces(201, log, 'POST /register');
+                            res.status(201).send('ok');
+                        } else {
+                            log = `Error registering new user: `;
+                            saveTraces(500, log, 'POST /register');
+                            res.status(500).send('error');
+                        }
 
-        if (result) {
-            log = `New user registered: `;
-            await saveTraces(201, log, 'POST /register');
-            res.status(201).send('ok');
-        } else {
-            log = `Error registering new user: `;
-            await saveTraces(500, log, 'POST /register');
-            res.status(500).send('error');
-        }
+                    })
+
+                })
+
+
+            .catch((err: { message: any; }) => console.error(err.message))
     });
-
 
     app.post('/api/login' , async (req: any, res: any, next:any) => {
-        let { email, password } = req.body;
-
         let collection = db.collection('users');
-        let user;
-        let token;
+        const email = req.body.email;
+        const password = req.body.password;
+        console.log(email, password)
 
-        console.log(req.body)
-        try {
-            user = await collection.findOne({"email":email, "password": password});
-            if(!user){
-                const error = Error("Wrong details please check at once");
-                await saveTraces(401, log, 'POST /login');
-                console.log(error)
-               res.status(401).send('Wrong details please check at once');
-            } else {
-                if (!user || user.password != password) {
-                    const error = Error("Wrong details please check at once");
-                    await saveTraces(401, log, 'POST /login');
-                    return next(error);
-                }
-
-                    token = jwt.sign(
+        const user = await collection.findOne({email: email});
+        console.log('User: ', user)
+        if (user) {
+            let data = user.password;
+            const compare = await bcrypt.compare(req.body.password, data, (err: any, hash: any) => {
+                console.log('Hash: ', hash)
+                if(hash === true){
+                    console.log('User found')
+                    const token = jwt.sign(
                         {
-                            userId: user.id,
                             email: user.email
                         },
-                        "secret",
-                        {expiresIn: "1h"}
-                    )
-                    await collection.updateOne(user, {$set: {token: token}});
-                     log = `User logged in: ${user.email}`;
+                        'secret',
+                        {expiresIn: '1h'});
+                    console.log('Token: ', token)
+                    res
+                        .status(200)
+                        .cookie('token',token, { maxAge: 900000, httpOnly: true })
+                        .json({success: true, message: "Authentication successful!", token: token});
+                } else {
+                    console.log('User not found')
+                    res.status(401).json({success: false, message: "Invalid credentials"});
+                }
+                console.log('Compare: ', compare)
+            });
 
-                await saveTraces(200, log, 'POST /login');
-                console.log(token)
-                res
-                    .status(200)
-                    .cookie('token',token, { maxAge: 900000, httpOnly: true })
-                    .json({token: token});
-
-            }
-
-        } catch (e) {
-            log = `Error logging in: ${e}`;
-            console.log(e)
-        }
-
+        } else {
+            console.log('User not found')
+            res.status(401).json({success: false, message: "Invalid credentials"});
+        }});
 
 
-    });
+
 
 
     // endpoint to upload a file and save it on the file system
@@ -239,9 +241,6 @@ async function startServer() {
             console.log(log)
             res.status(200).send(transactions);
         }
-
-
-
     });
 
     // start server
@@ -250,9 +249,12 @@ async function startServer() {
     });
 }
 
+
 // -----------------
 // --- Functions ---
 // -----------------
+
+
 
 async function verifyToken(token: any) {
     token = token.split(' ')[1];
@@ -269,10 +271,24 @@ let user = jwt.verify(token, "secret");
         }
 }
 
-async function hashPassword(password: string){
-    const salt = await bcrypt.genSalt(10);
-    return await bcrypt.hash(password, salt);
+
+async function hashPassword(password:string) {
+    await bcrypt.genSalt(10, (err: any, salt: any) => {
+        return bcrypt.hash(password, salt, (err: any, hash: any) => {
+            if (err) throw err;
+        });
+    });
 }
+
+// compare password
+async function comparePassword(plaintextPassword:string, hash:string) {
+    const result = await bcrypt.compare(plaintextPassword, hash, (err: any, result: any) => {
+        if (err) {
+            console.log(err);
+        }
+        return result;
+    }
+    );  }
 
 // send email to user from POST request
 async function sendEmail(subject: string, message: string, to: string) {
