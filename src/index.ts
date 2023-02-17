@@ -97,47 +97,48 @@ async function startServer() {
         let user;
         let token;
 
+        console.log(req.body)
         try {
-            user = await collection.findOne({"email": req.body.email, "password": req.body.password});
-            if(user.email != email && user.password != password){
+            user = await collection.findOne({"email":email, "password": password});
+            if(!user){
                 const error = Error("Wrong details please check at once");
                 await saveTraces(401, log, 'POST /login');
-                return next(error);
+                console.log(error)
+               res.status(401).send('Wrong details please check at once');
+            } else {
+                if (!user || user.password != password) {
+                    const error = Error("Wrong details please check at once");
+                    await saveTraces(401, log, 'POST /login');
+                    return next(error);
+                }
+
+                    token = jwt.sign(
+                        {
+                            userId: user.id,
+                            email: user.email
+                        },
+                        "secret",
+                        {expiresIn: "1h"}
+                    )
+                    await collection.updateOne(user, {$set: {token: token}});
+                     log = `User logged in: ${user.email}`;
+
+                await saveTraces(200, log, 'POST /login');
+                console.log(token)
+                res
+                    .status(200)
+                    .cookie('token',token, { maxAge: 900000, httpOnly: true })
+                    .json({token: token});
+
             }
 
         } catch (e) {
             log = `Error logging in: ${e}`;
             console.log(e)
         }
-        if (!user || user.password != password) {
-            const error = Error("Wrong details please check at once");
-            await saveTraces(401, log, 'POST /login');
-            return next(error);
-        }
 
-        try {
-            token = jwt.sign(
-                {
-                    userId: user.id,
-                    email: user.email
-                },
-                "secret",
-                {expiresIn: "1h"}
-            )
-            await collection.updateOne(user, {$set: {token: token}});
-        } catch (e) {
-            console.log(e)
-            log = `Error logging in: ${e}`;
-            await saveTraces(500, log, 'POST /login');
-            return next(e);
-        }
 
-        await saveTraces(200, log, 'POST /login');
-        console.log(token)
-        res
-            .status(200)
-            .cookie('token',token, { maxAge: 900000, httpOnly: true })
-            .json({token: token});
+
     });
 
 
