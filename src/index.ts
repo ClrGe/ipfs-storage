@@ -130,7 +130,7 @@ async function startServer() {
         console.log(token)
         res
             .status(200)
-            .cookie('session',true, { maxAge: 900000, httpOnly: true })
+            .cookie('token',token, { maxAge: 900000, httpOnly: true })
             .json({token: token});
     });
 
