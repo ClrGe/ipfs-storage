@@ -20,6 +20,8 @@ const   PORT            = process.env.PORT,
         SMTP_PASSWORD   = process.env.SMTP_PASSWORD,
 
         cors            = require('cors'),
+        cookieParser    = require('cookie-parser'),
+        jwt             = require('jsonwebtoken'),
         fs              = require('fs'),
         path            = require('path'),
         bcrypt          = require('bcrypt'),
@@ -49,6 +51,11 @@ app.use(cors(
 ));
 
 app.use(express.json())
+
+app.use(cookieParser())
+
+app.use(express.urlencoded({ extended: true }))
+
 app.use(cors())
 
 // -----------------
@@ -82,25 +89,74 @@ async function startServer() {
         }
     });
 
-    // endpoint to log a user in
-    app.post('/api/login' , async (req: any, res: any) => {
+
+    app.post('/api/login' , async (req: any, res: any, next:any) => {
+        let { email, password } = req.body;
+
         let collection = db.collection('users');
-        console.log(req.body)
-        log = `Login attempt from ${req.body} `;
-        let result = await collection.findOne({"email": req.body.email, "password": req.body.password});
+        let user;
+        let token;
 
-        console.log(log);
+        try {
+            user = await collection.findOne({"email": req.body.email, "password": req.body.password});
+        } catch (e) {
+            log = `Error logging in: ${e}`;
+            console.log(e)
+        }
+        if (!user || user.password != password) {
+            const error = Error("Wrong details please check at once");
+            await saveTraces(401, log, 'POST /login');
+            return next(error);
+        }
+
+        try {
+            token = jwt.sign(
+                {
+                    userId: user.id,
+                    email: user.email
+                },
+                "secret",
+                {expiresIn: "1h"}
+            )
+            await collection.updateOne(user, {$set: {token: token}});
+        } catch (e) {
+            console.log(e)
+            log = `Error logging in: ${e}`;
+            await saveTraces(500, log, 'POST /login');
+            return next(e);
+        }
+
         await saveTraces(200, log, 'POST /login');
-
-        res.status(200).send('ok');
+        console.log(token)
+        res
+            .status(200)
+            .cookie('session',true, { maxAge: 900000, httpOnly: true })
+            .json({token: token});
     });
+
 
     // endpoint to upload a file and save it on the file system
     app.post('/api/fs', upload.single('filepond'), async (req: any, res: any) => {
+
+        const token = req.headers.authorization;
+
+        if(!token) {
+            log = 'Failed - No token provided.';
+            res.status(401).send('No token provided.');
+            await saveTraces(401, log, 'POST /upload');
+            return;
+        }
+
+        let decode = await verifyToken(token)
+        if(!decode){
+            console.log("Invalid token")
+            res.status(401).json({success:false, message: "Invalid token"});
+            return;
+        }
+
         if (!req.file) {
             log = 'Failed - No file uploaded.';
             res.status(400).send('No file uploaded.');
-            await saveTraces(400, log, 'POST /fs');
             return;
         }
         try {
@@ -119,11 +175,28 @@ async function startServer() {
 
     // endpoint to upload a file and send it to ipfs
     app.post('/api/upload', upload.single('filepond'), async (req: any, res: any) => {
+
+        const token = req.headers.authorization;
+        if(!token) {
+            log = 'Failed - No token provided.';
+            res.status(401).send('No token provided.');
+            await saveTraces(401, log, 'POST /upload');
+            return;
+        }
+
+        let decode = await verifyToken(token)
+        if(!decode){
+            console.log("Invalid token")
+            res.status(401).json({success:false, message: "Invalid token"});
+            return;
+        }
+
         if (!req.file) {
             log = 'Failed - No file uploaded.';
             res.status(400).send('No file uploaded.');
             return;
         }
+
         try {
             console.log(`Received file: ${req.file.path}`);
             await loadToIpfs(req.file);
@@ -139,19 +212,28 @@ async function startServer() {
     // endpoint to send the list of transactions
     app.get('/api/transactions', async (req: any, res: any) => {
         let collection = db.collection('transactions');
-
-        try {
+        const token = req.headers.authorization;
+        console.log(token)
+        if(!token)
+        {
+            res.status(401).json({success:false, message: "No token provided"});
+            return;
+        }
+        let decode = await verifyToken(token)
+        if(!decode){
+            console.log("Invalid token")
+            res.status(401).json({success:false, message: "Invalid token"});
+            return;
+        }
+        else{
             const transactions = await collection.find().toArray();
             log = `Transactions sent: ${transactions}`;
             await saveTraces(200, log, 'GET /transactions');
             console.log(log)
             res.status(200).send(transactions);
-        } catch (error) {
-            log = `Error sending transactions: ${error}`;
-            console.error(log);
-            await saveTraces(500, log, 'GET /transactions');
-            res.status(500).send(`Error sending transactions: ${error}`);
         }
+
+
 
     });
 
@@ -164,6 +246,17 @@ async function startServer() {
 // -----------------
 // --- Functions ---
 // -----------------
+
+async function verifyToken(token: any) {
+    token = token.split(' ')[1];
+    let user = jwt.verify(token, "secret");
+    let result = await db.collection('users').findOne({email:user.email});
+    if (!result) {
+        return false;
+    } else {
+        return true;
+    }
+}
 
 async function hashPassword(password: string){
     const salt = await bcrypt.genSalt(10);
