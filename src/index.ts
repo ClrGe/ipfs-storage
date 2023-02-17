@@ -99,6 +99,12 @@ async function startServer() {
 
         try {
             user = await collection.findOne({"email": req.body.email, "password": req.body.password});
+            if(user.email != email && user.password != password){
+                const error = Error("Wrong details please check at once");
+                await saveTraces(401, log, 'POST /login');
+                return next(error);
+            }
+
         } catch (e) {
             log = `Error logging in: ${e}`;
             console.log(e)
@@ -249,13 +255,17 @@ async function startServer() {
 
 async function verifyToken(token: any) {
     token = token.split(' ')[1];
-    let user = jwt.verify(token, "secret");
-    let result = await db.collection('users').findOne({email:user.email});
-    if (!result) {
-        return false;
-    } else {
-        return true;
-    }
+    try {
+let user = jwt.verify(token, "secret");
+        let result = await db.collection('users').findOne({email:user.email});
+        if (result.email != user.email) {
+            return false;
+        } else {
+            return true;
+        }
+    } catch (e) {
+          return false;
+        }
 }
 
 async function hashPassword(password: string){
