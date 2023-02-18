@@ -140,10 +140,6 @@ async function startServer() {
             res.status(401).json({success: false, message: "Invalid credentials"});
         }});
 
-
-
-
-
     // endpoint to upload a file and save it on the file system
     app.post('/api/fs', upload.single('filepond'), async (req: any, res: any) => {
 
@@ -184,28 +180,6 @@ async function startServer() {
 
     // endpoint to upload a file and send it to ipfs
     app.post('/api/upload', upload.single('filepond'), async (req: any, res: any) => {
-
-        const token = req.headers.authorization;
-        if(!token) {
-            log = 'Failed - No token provided.';
-            res.status(401).send('No token provided.');
-            await saveTraces(401, log, 'POST /upload');
-            return;
-        }
-
-        let decode = await verifyToken(token)
-        if(!decode){
-            console.log("Invalid token")
-            res.status(401).json({success:false, message: "Invalid token"});
-            return;
-        }
-
-        if (!req.file) {
-            log = 'Failed - No file uploaded.';
-            res.status(400).send('No file uploaded.');
-            return;
-        }
-
         try {
             console.log(`Received file: ${req.file.path}`);
             await loadToIpfs(req.file);
@@ -229,7 +203,9 @@ async function startServer() {
             return;
         }
         let decode = await verifyToken(token)
-        if(!decode){
+        // if token is expired
+
+        if(decode.includes("invalid")){
             console.log("Invalid token")
             res.status(401).json({success:false, message: "Invalid token"});
             return;
@@ -262,13 +238,22 @@ async function verifyToken(token: any) {
 let user = jwt.verify(token, "secret");
         let result = await db.collection('users').findOne({email:user.email});
         if (result.email != user.email) {
-            return false;
-        } else {
-            return true;
+            return 'invalid';
+        } else if (result.email === user.email) {
+            return 'ok';
+        }  else {
+            return 'expired';
         }
     } catch (e) {
-          return false;
+        if(e instanceof jwt.TokenExpiredError) {
+            return 'expired';
+          } else if(e instanceof jwt.JsonWebTokenError) {
+            return 'invalid';
+          } else {
+            return 'invalid';
         }
+    }
+
 }
 
 
