@@ -187,7 +187,7 @@ async function startServer() {
         } catch (error) {
             log = `Error uploading file to IPFS: ${error}`;
             console.error(log);
-            await saveTraces(500, log, 'POST /upload');
+            await saveTraces(500, `Could not process: ${req.file.path}`, 'POST /upload');
             res.status(500).send(`Error uploading file to IPFS: ${error}`);
         }
     });
@@ -212,8 +212,6 @@ async function startServer() {
         }
         else{
             const transactions = await collection.find().toArray();
-            log = `Transactions sent: ${transactions}`;
-            await saveTraces(200, log, 'GET /transactions');
             console.log(log)
             res.status(200).send(transactions);
         }
