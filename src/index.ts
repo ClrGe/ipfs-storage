@@ -3,7 +3,6 @@
 // ------- Back-end pour la plateforme de dépôt de ressources numériques vers divers supports --------
 // ---------------------------------------------------------------------------------------------------
 
-
 require('dotenv').config();
 
 // -----------------
@@ -223,12 +222,9 @@ async function startServer() {
     });
 }
 
-
 // -----------------
 // --- Functions ---
 // -----------------
-
-
 
 async function verifyToken(token: any) {
     token = token.split(' ')[1];
@@ -253,7 +249,6 @@ let user = jwt.verify(token, "secret");
     }
 
 }
-
 
 async function hashPassword(password:string) {
     await bcrypt.genSalt(10, (err: any, salt: any) => {
@@ -297,7 +292,6 @@ async function sendEmail(subject: string, message: string, to: string) {
         text: message
     }
 
-
     transporter.sendMail(email, (err: any, info: any) => {
         if (err) {
             log = `Error sending email: ${err}`;
@@ -322,7 +316,6 @@ async function uploadToFs(file: any) {
     log = `'${file.originalname}' uploaded to fs`;
    });
 }
-
 
 async function loadToIpfs(file: any) {
     let {create} = await import('ipfs-core');
