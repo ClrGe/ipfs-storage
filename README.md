@@ -1,4 +1,5 @@
 # IPFS storage
+stockage de fichiers à haute traçabilité dans le web décentralisé
 
 ## Stack
 
